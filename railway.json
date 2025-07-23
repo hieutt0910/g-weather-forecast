@@ -1,0 +1,7 @@
+{
+  "build": {
+    "builder": "NIXPACKS",
+    "buildCommand": "cd weather_backend && npm install",
+    "startCommand": "cd weather_backend && npm start"
+  }
+}
