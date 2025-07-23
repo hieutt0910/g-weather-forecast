@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "940294396657",
+    "project_id": "g-weather-forecast-922f3",
+    "storage_bucket": "g-weather-forecast-922f3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:940294396657:android:adc8e433200060003ca750",
+        "android_client_info": {
+          "package_name": "com.example.g_weather_forecast"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCc832VwfpjB8FeJKgK_iVhhhIncGJUvmw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
