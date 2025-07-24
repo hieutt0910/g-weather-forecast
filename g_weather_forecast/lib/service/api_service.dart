@@ -8,11 +8,13 @@ class WeatherService {
   final String _apiKey = '16b3992992cf467c88363403252207';
 
   Future<Map<String, dynamic>> fetchWeather(String city) async {
-    final response = await http.get(
-      Uri.parse(
-        '$_baseUrl/forecast.json?key=$_apiKey&q=$city&days=7&aqi=no&alerts=no',
-      ),
-    );
+    final response = await http
+        .get(
+          Uri.parse(
+            '$_baseUrl/forecast.json?key=$_apiKey&q=$city&days=7&aqi=no&alerts=no',
+          ),
+        )
+        .timeout(const Duration(seconds: 5));
 
     if (response.statusCode == 200) {
       return json.decode(response.body);
@@ -28,11 +30,13 @@ class WeatherService {
     double lat,
     double lon,
   ) async {
-    final response = await http.get(
-      Uri.parse(
-        '$_baseUrl/forecast.json?key=$_apiKey&q=$lat,$lon&days=7&aqi=no&alerts=no',
-      ),
-    );
+    final response = await http
+        .get(
+          Uri.parse(
+            '$_baseUrl/forecast.json?key=$_apiKey&q=$lat,$lon&days=7&aqi=no&alerts=no',
+          ),
+        )
+        .timeout(const Duration(seconds: 5));
 
     if (response.statusCode == 200) {
       return json.decode(response.body);
@@ -45,9 +49,9 @@ class WeatherService {
   }
 
   Future<List<Map<String, dynamic>>> searchCity(String query) async {
-    final response = await http.get(
-      Uri.parse('$_baseUrl/search.json?key=$_apiKey&q=$query'),
-    );
+    final response = await http
+        .get(Uri.parse('$_baseUrl/search.json?key=$_apiKey&q=$query'))
+        .timeout(const Duration(seconds: 5));
 
     if (response.statusCode == 200) {
       final List<dynamic> jsonList = json.decode(response.body);

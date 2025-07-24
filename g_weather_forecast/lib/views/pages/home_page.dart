@@ -3,7 +3,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:g_weather_forecast/service/api_service.dart';
 import 'package:g_weather_forecast/views/bloc/weather_history_bloc.dart';
 import 'package:g_weather_forecast/views/bloc/weather_history_event.dart';
-import 'package:g_weather_forecast/views/pages/email_registration_page.dart';
 import 'package:g_weather_forecast/views/pages/error_messege_page.dart';
 import 'package:g_weather_forecast/views/pages/loading_page.dart';
 import 'package:g_weather_forecast/views/widgets/city_search_input.dart';
@@ -67,51 +66,57 @@ class _HomePageState extends State<HomePage> {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       final String? lastWeatherDataJson = prefs.getString(_lastWeatherDataKey);
 
-      Map<String, dynamic>? data;
+      Map<String, dynamic>? cachedData;
 
       if (lastWeatherDataJson != null && lastWeatherDataJson.isNotEmpty) {
         try {
-          data = json.decode(lastWeatherDataJson) as Map<String, dynamic>;
+          cachedData = json.decode(lastWeatherDataJson) as Map<String, dynamic>;
+          if (mounted) {
+            setState(() {
+              _weatherData = cachedData;
+              _cityController.text = _weatherData!['location']['name'];
+              _isLoading = false;
+            });
+            context.read<WeatherHistoryBloc>().add(
+                  AddWeatherToHistory(weatherData: _weatherData!),
+                );
+          }
         } catch (e) {
           await prefs.remove(_lastWeatherDataKey);
         }
       }
 
-      if (data == null) {
-        try {
-          await _fetchCurrentLocationWeather(isInitialLoad: true);
-          data = _weatherData;
-        } catch (e) {}
-      }
-
-      if (data == null) {
-        data = await _weatherService.fetchWeather('Ho Chi Minh');
-      }
-
-      if (mounted) {
-        setState(() {
-          _weatherData = data;
-          if (_weatherData != null) {
-            _cityController.text = _weatherData!['location']['name'];
-          }
-        });
-
-        if (_weatherData != null) {
-          await _saveWeatherData(_weatherData!);
-          context.read<WeatherHistoryBloc>().add(
-                AddWeatherToHistory(weatherData: _weatherData!),
-              );
+      Map<String, dynamic>? newData;
+      try {
+        await _fetchCurrentLocationWeather(isInitialLoad: true);
+        newData = _weatherData;
+      } catch (e) {
+        if (newData == null) {
+          newData = await _weatherService.fetchWeather('Ho Chi Minh');
         }
       }
+
+      if (mounted && newData != null) {
+        setState(() {
+          _weatherData = newData;
+          _cityController.text = _weatherData!['location']['name'];
+        });
+        await _saveWeatherData(_weatherData!);
+        context.read<WeatherHistoryBloc>().add(
+              AddWeatherToHistory(weatherData: _weatherData!),
+            );
+      }
     } catch (e) {
-      setState(() {
-        _errorMessage =
-            'Không thể tải dữ liệu thời tiết ban đầu. Vui lòng kiểm tra kết nối mạng hoặc cấp quyền vị trí. Lỗi: ${e.toString().split(':')[0]}';
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_errorMessage!), backgroundColor: Colors.red),
-        );
+      if (_weatherData == null) {
+        setState(() {
+          _errorMessage =
+              'Không thể truy xuất dữ liệu thời tiết ban đầu. Vui lòng kiểm tra kết nối internet và quyền vị trí. Lỗi: ${e.toString().split(':')[0]}';
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(_errorMessage!), backgroundColor: Colors.red),
+          );
+        }
       }
     } finally {
       setState(() {
@@ -152,7 +157,7 @@ class _HomePageState extends State<HomePage> {
     } catch (e) {
       setState(() {
         _errorMessage =
-            'Không thể tải dữ liệu thời tiết. Vui lòng kiểm tra lại tên thành phố hoặc kết nối mạng. Lỗi: ${e.toString().split(':')[0]}';
+            'Không thể tải dữ liệu thời tiết. Vui lòng xác minh tên thành phố hoặc đảm bảo có kết nối internet. Lỗi: ${e.toString().split(':')[0]}';
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -179,6 +184,37 @@ class _HomePageState extends State<HomePage> {
     await _fetchWeatherForCity(city);
   }
 
+  Future<Position> getCurrentLocation() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      return Future.error('Dịch vụ định vị đang tắt.');
+    }
+
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        return Future.error('Quyền truy cập vị trí bị từ chối');
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      return Future.error('Quyền truy cập vị trí bị từ chối vĩnh viễn');
+    }
+
+    const LocationSettings locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.high,
+      timeLimit: Duration(seconds: 5),
+    );
+
+    return await Geolocator.getCurrentPosition(
+      locationSettings: locationSettings,
+    );
+  }
+
   Future<void> _fetchCurrentLocationWeather({
     bool isInitialLoad = false,
   }) async {
@@ -196,16 +232,15 @@ class _HomePageState extends State<HomePage> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
-                'Dịch vụ định vị chưa được bật. Vui lòng bật để sử dụng tính năng này.',
+                'Vui lòng bật dịch vụ định vị để sử dụng tính năng này.',
               ),
               backgroundColor: Colors.orange,
             ),
           );
         }
-        String msg = 'Dịch vụ định vị chưa được bật.';
         if (!isInitialLoad) {
           setState(() {
-            _errorMessage = msg;
+            _errorMessage = 'Dịch vụ định vị không được bật.';
           });
         }
         return;
@@ -214,49 +249,29 @@ class _HomePageState extends State<HomePage> {
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Quyền truy cập vị trí đã bị từ chối.'),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-          String msg = 'Quyền truy cập vị trí đã bị từ chối.';
-          if (!isInitialLoad) {
-            setState(() {
-              _errorMessage = msg;
-            });
-          }
-          return;
-        }
       }
 
-      if (permission == LocationPermission.deniedForever) {
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
-                'Quyền truy cập vị trí đã bị từ chối vĩnh viễn. Vui lòng cấp quyền trong cài đặt ứng dụng.',
+                'Quyền vị trí bị từ chối. Vui lòng bật trong cài đặt.',
               ),
               backgroundColor: Colors.red,
             ),
           );
         }
-        String msg = 'Quyền truy cập vị trí đã bị từ chối vĩnh viễn.';
         if (!isInitialLoad) {
           setState(() {
-            _errorMessage = msg;
+            _errorMessage = 'Quyền vị trí bị từ chối.';
           });
         }
         return;
       }
 
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 20),
-      );
+      Position position = await getCurrentLocation();
 
       final data = await _weatherService.fetchWeatherByCoordinates(
         position.latitude,
@@ -278,7 +293,7 @@ class _HomePageState extends State<HomePage> {
       }
     } catch (e) {
       String errorMsg =
-          'Không thể lấy vị trí hiện tại hoặc tải dữ liệu thời tiết. Lỗi: ${e.toString().split(':')[0]}';
+          'Không thể truy xuất vị trí hiện tại hoặc tải dữ liệu thời tiết. Lỗi: ${e.toString().split(':')[0]}';
 
       if (!isInitialLoad) {
         setState(() {
@@ -291,11 +306,9 @@ class _HomePageState extends State<HomePage> {
         }
       }
     } finally {
-      if (!isInitialLoad && mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -307,7 +320,6 @@ class _HomePageState extends State<HomePage> {
       _errorMessage = null;
       _citySuggestions = [];
     });
-    Navigator.of(context).pop();
 
     if (_weatherData != null) {
       await _saveWeatherData(_weatherData!);
@@ -359,7 +371,7 @@ class _HomePageState extends State<HomePage> {
       return const Scaffold(
         body: Center(
           child: Text(
-            'Không có dữ liệu thời tiết',
+            'Không có dữ liệu thời tiết.',
             style: TextStyle(fontSize: 20),
           ),
         ),
@@ -390,21 +402,18 @@ class _HomePageState extends State<HomePage> {
             DrawerHeader(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [
-                    Colors.blue.shade700,
-                    Colors.blue.shade400,
-                  ],
+                  colors: [Colors.blue.shade700, Colors.blue.shade400],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 borderRadius: const BorderRadius.only(
                   bottomRight: Radius.circular(20),
                 ),
-                boxShadow: [
+                boxShadow: const [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
+                    color: Colors.black,
                     blurRadius: 10,
-                    offset: const Offset(0, 5),
+                    offset: Offset(0, 5),
                   ),
                 ],
               ),
@@ -425,11 +434,8 @@ class _HomePageState extends State<HomePage> {
                     ),
                     SizedBox(height: 8),
                     Text(
-                      'Các thành phố bạn đã tìm kiếm gần đây',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 14,
-                      ),
+                      'Các thành phố đã tìm kiếm gần đây',
+                      style: TextStyle(color: Colors.white70, fontSize: 20),
                     ),
                   ],
                 ),
@@ -440,21 +446,6 @@ class _HomePageState extends State<HomePage> {
                 onTapHistoryItem: _loadWeatherFromHistory,
               ),
             ),
-            ListTile(
-              leading: const Icon(Icons.email, color: Colors.blueAccent),
-              title: const Text(
-                'Đăng ký nhận email',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-              ),
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const EmailSubscriptionPage(),
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 10),
           ],
         ),
       ),
@@ -478,12 +469,13 @@ class _HomePageState extends State<HomePage> {
                     key: _textFieldKey,
                     children: [
                       Builder(
-                        builder: (context) => IconButton(
-                          icon: const Icon(Icons.menu, color: Colors.white),
-                          onPressed: () {
-                            Scaffold.of(context).openDrawer();
-                          },
-                        ),
+                        builder:
+                            (context) => IconButton(
+                              icon: const Icon(Icons.menu, color: Colors.white),
+                              onPressed: () {
+                                Scaffold.of(context).openDrawer();
+                              },
+                            ),
                       ),
                       const SizedBox(width: 8),
                       Expanded(

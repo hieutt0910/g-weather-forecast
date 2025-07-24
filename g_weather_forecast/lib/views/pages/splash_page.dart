@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:g_weather_forecast/views/pages/home_page.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lottie/lottie.dart';
+import 'package:geolocator/geolocator.dart';
 
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
@@ -11,6 +12,47 @@ class SplashPage extends StatefulWidget {
 }
 
 class _SplashPageState extends State<SplashPage> {
+  Future<bool> _handleLocationPermission() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Dịch vụ định vị đang tắt. Vui lòng bật để tiếp tục.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return false;
+    }
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Quyền vị trí bị từ chối.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return false;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Quyền vị trí bị từ chối vĩnh viễn. Vui lòng vào cài đặt để cấp.',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return false;
+    }
+
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
@@ -51,15 +93,18 @@ class _SplashPageState extends State<SplashPage> {
                       fit: BoxFit.fill,
                     ),
                     ElevatedButton(
-                      onPressed: () {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) {
-                              return HomePage();
-                            },
-                          ),
-                        );
+                      onPressed: () async {
+                        final hasPermission = await _handleLocationPermission();
+                        if (!hasPermission) return;
+
+                        if (mounted) {
+                          Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const HomePage(),
+                            ),
+                          );
+                        }
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.white,

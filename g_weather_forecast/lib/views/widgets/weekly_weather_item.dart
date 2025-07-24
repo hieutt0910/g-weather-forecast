@@ -22,7 +22,7 @@ class WeeklyWeatherItem extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.blueGrey.withOpacity(0.7),
+        color: Colors.blueAccent.withOpacity(0.7),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.white.withOpacity(0.3)),
       ),
@@ -50,7 +50,7 @@ class WeeklyWeatherItem extends StatelessWidget {
                 const SizedBox(height: 4),
                 if (dailyChanceOfRain > 0)
                   Text(
-                    'Khả năng mưa: $dailyChanceOfRain%',
+                    'Chance of rain: $dailyChanceOfRain%',
                     style: const TextStyle(color: Colors.white70, fontSize: 14),
                   ),
               ],
@@ -73,10 +73,10 @@ class WeeklyWeatherItem extends StatelessWidget {
                         ),
                   ),
                 Text(
-                  '$maxTempC° / $minTempC°',
+                  '$maxTempC°/$minTempC°',
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 18,
+                    fontSize: 16,
                     fontWeight: FontWeight.bold,
                   ),
                 ),

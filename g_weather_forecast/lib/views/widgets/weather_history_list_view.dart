@@ -17,14 +17,14 @@ class WeatherHistoryListView extends StatelessWidget {
           return const Center(child: CircularProgressIndicator());
         }
         if (state is WeatherHistoryError) {
-          return Center(child: Text('Lỗi tải lịch sử: ${state.message}'));
+          return Center(child: Text('Failed to load history:${state.message}'));
         }
         if (state.history.isEmpty) {
           return const Center(
             child: Padding(
               padding: EdgeInsets.all(16.0),
               child: Text(
-                'Chưa có thành phố nào được tìm kiếm trong hôm nay.',
+                'No cities have been searched today.',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 16, color: Colors.grey),
               ),
@@ -103,7 +103,7 @@ class WeatherHistoryListView extends StatelessWidget {
                     );
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text('Đã xóa "$cityName" khỏi lịch sử.'),
+                        content: Text('Removed "$cityName" from history.'),
                       ),
                     );
                   },

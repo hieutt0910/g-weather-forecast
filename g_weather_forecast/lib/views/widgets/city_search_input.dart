@@ -24,20 +24,23 @@ class CitySearchInput extends StatelessWidget {
       decoration: InputDecoration(
         filled: true,
         fillColor: Colors.white24,
-        hintText: 'Tìm kiếm thành phố...',
+        hintText: 'Searching for city...',
         hintStyle: const TextStyle(color: Colors.white70),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,
         ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        suffixIcon: controller.text.isNotEmpty
-            ? IconButton(
-                icon: const Icon(Icons.clear, color: Colors.white),
-                onPressed: onClear,
-              )
-            : null,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
+        suffixIcon:
+            controller.text.isNotEmpty
+                ? IconButton(
+                  icon: const Icon(Icons.clear, color: Colors.white),
+                  onPressed: onClear,
+                )
+                : null,
       ),
     );
   }

@@ -35,12 +35,14 @@ class WeatherInformation extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Text(
-            '$cityName, $country',
-            style: const TextStyle(
-              fontSize: 24,
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
+          Center(
+            child: Text(
+              '$cityName, $country',
+              style: const TextStyle(
+                fontSize: 24,
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
           const SizedBox(height: 4),
@@ -75,10 +77,7 @@ class WeatherInformation extends StatelessWidget {
               const SizedBox(width: 16),
               const Icon(Icons.water_drop, color: Colors.white70, size: 30),
               const SizedBox(width: 4),
-              Text(
-                '$humidity%',
-                style: const TextStyle(color: Colors.white70),
-              ),
+              Text('$humidity%', style: const TextStyle(color: Colors.white70)),
             ],
           ),
         ],
