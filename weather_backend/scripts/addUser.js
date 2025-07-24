@@ -1,15 +1,19 @@
-require("dotenv").config();
-const mongoose = require("mongoose");
-const User = require("../models/user");
+import dotenv from "dotenv";
+import mongoose from "mongoose";
+import Subscriber from "../models/subscriber.js";
+
+dotenv.config();
 
 mongoose
   .connect(process.env.MONGODB_URI)
   .then(async () => {
-    await User.create({
-      email: "example@gmail.com", 
-      location: "Ho Chi Minh", 
+    await Subscriber.create({
+      email: "example@gmail.com",
+      location: "Ho Chi Minh",
+      isVerified: true,
     });
-    console.log("User added!");
-    mongoose.disconnect();
+
+    console.log("Subscriber added!");
+    await mongoose.disconnect();
   })
-  .catch((err) => console.error(err));
+  .catch((err) => console.error("MongoDB connection error:", err));

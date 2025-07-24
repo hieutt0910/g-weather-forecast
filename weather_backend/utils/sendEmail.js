@@ -9,7 +9,8 @@ const transporter = nodemailer.createTransport({
 });
 
 export async function sendVerificationEmail(email, token) {
-  const link = `https://yourdomain.com/verify?token=${token}`;
+  const link = `${process.env.BASE_URL}/verify?token=${token}`;
+
   await transporter.sendMail({
     from: process.env.GMAIL_USER,
     to: email,

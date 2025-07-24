@@ -1,8 +1,9 @@
-const express = require('express');
+import express from 'express';
+import { v4 as uuidv4 } from 'uuid';
+import Subscriber from '../models/subscriber.js';
+import { sendVerificationEmail } from '../utils/sendEmail.js';
+
 const router = express.Router();
-const { v4: uuidv4 } = require('uuid');
-const Subscriber = require('../models/subscriber');
-const { sendVerificationEmail } = require('../utils/sendEmail');
 
 router.post('/subscribe', async (req, res) => {
   const { email } = req.body;
@@ -30,7 +31,7 @@ router.get('/verify', async (req, res) => {
   user.isVerified = true;
   user.token = null;
   await user.save();
-  res.send('✅ Email verified successfully!');
+  res.send('Email verified successfully!');
 });
 
 router.post('/unsubscribe', async (req, res) => {
@@ -39,4 +40,4 @@ router.post('/unsubscribe', async (req, res) => {
   res.json({ message: 'Unsubscribed successfully' });
 });
 
-module.exports = router;
+export default router;

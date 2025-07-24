@@ -1,17 +1,30 @@
-require('dotenv').config();
-const express = require('express');
-const mongoose = require('mongoose');
-const cors = require('cors');
-require('./cron/dailyWeather');
+import dotenv from "dotenv";
+import express from "express";
+import mongoose from "mongoose";
+import cors from "cors";
+
+import dailyWeather from "./cron/dailyWeather.js";
+import subscribeRoutes from "./routes/subscribe.js";
+
+dotenv.config();
 
 const app = express();
+const PORT = process.env.PORT || 8080;
+
 app.use(cors());
 app.use(express.json());
 
-app.use('/api', require('./routes/subscribe'));
+app.get("/", (req, res) => {
+  res.send("API is running");
+});
 
-mongoose.connect(process.env.MONGODB_URI)
-  .then(() => app.listen(process.env.PORT, () => {
-    console.log(`Server running on port ${process.env.PORT}`);
-  }))
+app.use("/api", subscribeRoutes);
+
+mongoose
+  .connect(process.env.MONGODB_URI)
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  })
   .catch(console.error);
