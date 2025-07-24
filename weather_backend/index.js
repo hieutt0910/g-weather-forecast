@@ -3,7 +3,6 @@ import express from "express";
 import mongoose from "mongoose";
 import cors from "cors";
 
-import dailyWeather from "./cron/dailyWeather.js";
 import subscribeRoutes from "./routes/subscribe.js";
 
 dotenv.config();
