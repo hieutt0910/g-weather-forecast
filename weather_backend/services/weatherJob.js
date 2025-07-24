@@ -1,4 +1,3 @@
-// services/weatherJob.js
 const axios = require('axios');
 const User = require('../models/user');
 const { sendWeatherEmail } = require('./emailService');
