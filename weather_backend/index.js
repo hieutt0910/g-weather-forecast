@@ -12,6 +12,6 @@ app.use('/api', require('./routes/subscribe'));
 
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => app.listen(process.env.PORT, () => {
-    console.log(`🚀 Server running on port ${process.env.PORT}`);
+    console.log(`Server running on port ${process.env.PORT}`);
   }))
   .catch(console.error);

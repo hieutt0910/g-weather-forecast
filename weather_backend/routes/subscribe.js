@@ -4,7 +4,6 @@ const { v4: uuidv4 } = require('uuid');
 const Subscriber = require('../models/subscriber');
 const { sendVerificationEmail } = require('../utils/sendEmail');
 
-// Đăng ký
 router.post('/subscribe', async (req, res) => {
   const { email } = req.body;
   const token = uuidv4();
@@ -34,7 +33,6 @@ router.get('/verify', async (req, res) => {
   res.send('✅ Email verified successfully!');
 });
 
-// Hủy đăng ký
 router.post('/unsubscribe', async (req, res) => {
   const { email } = req.body;
   await Subscriber.findOneAndDelete({ email });
