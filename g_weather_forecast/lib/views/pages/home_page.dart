@@ -3,10 +3,14 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:g_weather_forecast/service/api_service.dart';
 import 'package:g_weather_forecast/views/bloc/weather_history_bloc.dart';
 import 'package:g_weather_forecast/views/bloc/weather_history_event.dart';
-import 'package:g_weather_forecast/views/bloc/weather_history_state.dart';
-import 'package:g_weather_forecast/views/widgets/hourly_weather.dart';
+import 'package:g_weather_forecast/views/pages/email_registration_page.dart';
+import 'package:g_weather_forecast/views/pages/error_messege_page.dart';
+import 'package:g_weather_forecast/views/pages/loading_page.dart';
+import 'package:g_weather_forecast/views/widgets/city_search_input.dart';
+import 'package:g_weather_forecast/views/widgets/city_suggestions_dropdown.dart';
+import 'package:g_weather_forecast/views/widgets/hourly_forecast_section.dart';
+import 'package:g_weather_forecast/views/widgets/weather_history_list_view.dart';
 import 'package:g_weather_forecast/views/widgets/weather_infomation.dart';
-import 'package:intl/intl.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
@@ -18,8 +22,7 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage>
-    with SingleTickerProviderStateMixin {
+class _HomePageState extends State<HomePage> {
   final TextEditingController _cityController = TextEditingController();
   final WeatherService _weatherService = WeatherService();
 
@@ -30,8 +33,6 @@ class _HomePageState extends State<HomePage>
 
   final GlobalKey _textFieldKey = GlobalKey();
 
-  late TabController _tabController;
-  final int _numberOfForecastDays = 3;
   final ScrollController _hourlyScrollController = ScrollController();
 
   static const String _lastWeatherDataKey = 'last_weather_data';
@@ -39,18 +40,24 @@ class _HomePageState extends State<HomePage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: _numberOfForecastDays, vsync: this);
-    _tabController.addListener(_handleTabSelection);
-    _loadInitialWeather();
+    _loadInitialWeatherRobust();
   }
 
-  void _handleTabSelection() {
-    if (!_tabController.indexIsChanging && mounted) {
-      setState(() {});
-    }
+  bool _isCurrentHour(String date, String hourTime) {
+    final DateTime now = DateTime.now();
+    final DateTime forecastDateTime = DateTime.parse(hourTime);
+
+    final bool isToday =
+        forecastDateTime.year == now.year &&
+        forecastDateTime.month == now.month &&
+        forecastDateTime.day == now.day;
+
+    final bool isCurrentHour = forecastDateTime.hour == now.hour;
+
+    return isToday && isCurrentHour;
   }
 
-  Future<void> _loadInitialWeather() async {
+  Future<void> _loadInitialWeatherRobust() async {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -63,51 +70,43 @@ class _HomePageState extends State<HomePage>
       Map<String, dynamic>? data;
 
       if (lastWeatherDataJson != null && lastWeatherDataJson.isNotEmpty) {
-        print('DEBUG: Found saved weather data. Attempting to load...');
         try {
           data = json.decode(lastWeatherDataJson) as Map<String, dynamic>;
-          print(
-            'DEBUG: Successfully loaded last weather data from SharedPreferences: ${data['location']['name']}',
-          );
         } catch (e) {
-          print('ERROR: Failed to decode last weather data JSON: $e');
           await prefs.remove(_lastWeatherDataKey);
-          print(
-            'DEBUG: Corrupted data cleared. Falling back to default city (Ho Chi Minh).',
-          );
-          data = await _weatherService.fetchWeather('Ho Chi Minh');
         }
-      } else {
-        print(
-          'DEBUG: No last weather data found in SharedPreferences. Loading default city (Ho Chi Minh).',
-        );
+      }
+
+      if (data == null) {
+        try {
+          await _fetchCurrentLocationWeather(isInitialLoad: true);
+          data = _weatherData;
+        } catch (e) {}
+      }
+
+      if (data == null) {
         data = await _weatherService.fetchWeather('Ho Chi Minh');
       }
 
       if (mounted) {
         setState(() {
           _weatherData = data;
-          _cityController.text = _weatherData!['location']['name'];
-          final newLength =
-              (_weatherData!['forecast']['forecastday'] as List).length;
-          if (_tabController.length != newLength) {
-            _tabController.dispose();
-            _tabController = TabController(length: newLength, vsync: this);
-            _tabController.addListener(_handleTabSelection);
+          if (_weatherData != null) {
+            _cityController.text = _weatherData!['location']['name'];
           }
         });
-        _tabController.animateTo(0);
 
-        await _saveWeatherData(_weatherData!);
-
-        context.read<WeatherHistoryBloc>().add(
-          AddWeatherToHistory(weatherData: _weatherData!),
-        );
+        if (_weatherData != null) {
+          await _saveWeatherData(_weatherData!);
+          context.read<WeatherHistoryBloc>().add(
+                AddWeatherToHistory(weatherData: _weatherData!),
+              );
+        }
       }
     } catch (e) {
       setState(() {
         _errorMessage =
-            'Không thể tải dữ liệu thời tiết ban đầu. Vui lòng thử lại. Lỗi: ${e.toString().split(':')[0]}';
+            'Không thể tải dữ liệu thời tiết ban đầu. Vui lòng kiểm tra kết nối mạng hoặc cấp quyền vị trí. Lỗi: ${e.toString().split(':')[0]}';
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -126,12 +125,7 @@ class _HomePageState extends State<HomePage>
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       final String jsonString = json.encode(data);
       await prefs.setString(_lastWeatherDataKey, jsonString);
-      print(
-        'DEBUG: Weather data for "${data['location']['name']}" saved to SharedPreferences.',
-      );
-    } catch (e) {
-      print('ERROR: Failed to save weather data to SharedPreferences: $e');
-    }
+    } catch (e) {}
   }
 
   Future<void> _fetchWeatherForCity(String city) async {
@@ -146,25 +140,19 @@ class _HomePageState extends State<HomePage>
       final data = await _weatherService.fetchWeather(city);
       setState(() {
         _weatherData = data;
-        final newLength = (data['forecast']['forecastday'] as List).length;
-        if (_tabController.length != newLength) {
-          _tabController.dispose();
-          _tabController = TabController(length: newLength, vsync: this);
-          _tabController.addListener(_handleTabSelection);
-        }
+        _cityController.text = data['location']['name'];
       });
-      _tabController.animateTo(0);
 
       if (mounted && _weatherData != null) {
         await _saveWeatherData(_weatherData!);
         context.read<WeatherHistoryBloc>().add(
-          AddWeatherToHistory(weatherData: _weatherData!),
-        );
+              AddWeatherToHistory(weatherData: _weatherData!),
+            );
       }
     } catch (e) {
       setState(() {
         _errorMessage =
-            'Không thể tải dữ liệu thời tiết. Vui lòng thử lại. Lỗi: ${e.toString().split(':')[0]}';
+            'Không thể tải dữ liệu thời tiết. Vui lòng kiểm tra lại tên thành phố hoặc kết nối mạng. Lỗi: ${e.toString().split(':')[0]}';
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -191,11 +179,15 @@ class _HomePageState extends State<HomePage>
     await _fetchWeatherForCity(city);
   }
 
-  Future<void> _fetchCurrentLocationWeather() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+  Future<void> _fetchCurrentLocationWeather({
+    bool isInitialLoad = false,
+  }) async {
+    if (!isInitialLoad) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+    }
 
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -210,10 +202,12 @@ class _HomePageState extends State<HomePage>
             ),
           );
         }
-        setState(() {
-          _isLoading = false;
-          _errorMessage = 'Dịch vụ định vị chưa được bật.';
-        });
+        String msg = 'Dịch vụ định vị chưa được bật.';
+        if (!isInitialLoad) {
+          setState(() {
+            _errorMessage = msg;
+          });
+        }
         return;
       }
 
@@ -229,10 +223,12 @@ class _HomePageState extends State<HomePage>
               ),
             );
           }
-          setState(() {
-            _isLoading = false;
-            _errorMessage = 'Quyền truy cập vị trí đã bị từ chối.';
-          });
+          String msg = 'Quyền truy cập vị trí đã bị từ chối.';
+          if (!isInitialLoad) {
+            setState(() {
+              _errorMessage = msg;
+            });
+          }
           return;
         }
       }
@@ -248,58 +244,58 @@ class _HomePageState extends State<HomePage>
             ),
           );
         }
-        setState(() {
-          _isLoading = false;
-          _errorMessage = 'Quyền truy cập vị trí đã bị từ chối vĩnh viễn.';
-        });
+        String msg = 'Quyền truy cập vị trí đã bị từ chối vĩnh viễn.';
+        if (!isInitialLoad) {
+          setState(() {
+            _errorMessage = msg;
+          });
+        }
         return;
       }
 
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 10),
-      );
-
-      print(
-        'DEBUG: Vị trí hiện tại: ${position.latitude}, ${position.longitude}',
+        timeLimit: const Duration(seconds: 20),
       );
 
       final data = await _weatherService.fetchWeatherByCoordinates(
         position.latitude,
         position.longitude,
       );
-      setState(() {
-        _weatherData = data;
-        _cityController.text = data['location']['name'];
-        final newLength = (data['forecast']['forecastday'] as List).length;
-        if (_tabController.length != newLength) {
-          _tabController.dispose();
-          _tabController = TabController(length: newLength, vsync: this);
-          _tabController.addListener(_handleTabSelection);
-        }
-      });
-      _tabController.animateTo(0);
 
-      if (mounted && _weatherData != null) {
-        await _saveWeatherData(_weatherData!);
-        context.read<WeatherHistoryBloc>().add(
-          AddWeatherToHistory(weatherData: _weatherData!),
-        );
+      if (mounted) {
+        setState(() {
+          _weatherData = data;
+          _cityController.text = data['location']['name'];
+        });
+
+        if (_weatherData != null) {
+          await _saveWeatherData(_weatherData!);
+          context.read<WeatherHistoryBloc>().add(
+                AddWeatherToHistory(weatherData: _weatherData!),
+              );
+        }
       }
     } catch (e) {
-      setState(() {
-        _errorMessage =
-            'Không thể lấy vị trí hiện tại hoặc tải dữ liệu thời tiết. Lỗi: ${e.toString().split(':')[0]}';
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_errorMessage!), backgroundColor: Colors.red),
-        );
+      String errorMsg =
+          'Không thể lấy vị trí hiện tại hoặc tải dữ liệu thời tiết. Lỗi: ${e.toString().split(':')[0]}';
+
+      if (!isInitialLoad) {
+        setState(() {
+          _errorMessage = errorMsg;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(errorMsg), backgroundColor: Colors.red),
+          );
+        }
       }
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (!isInitialLoad && mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -311,7 +307,6 @@ class _HomePageState extends State<HomePage>
       _errorMessage = null;
       _citySuggestions = [];
     });
-    _tabController.animateTo(0);
     Navigator.of(context).pop();
 
     if (_weatherData != null) {
@@ -320,12 +315,10 @@ class _HomePageState extends State<HomePage>
   }
 
   Future<void> _fetchCitySuggestions(String query) async {
-    print('DEBUG: _fetchCitySuggestions called with query: "$query"');
     if (query.isEmpty) {
       setState(() {
         _citySuggestions = [];
       });
-      print('DEBUG: Query is empty, clearing suggestions.');
       return;
     }
     try {
@@ -333,12 +326,7 @@ class _HomePageState extends State<HomePage>
       setState(() {
         _citySuggestions = suggestions;
       });
-      print('DEBUG: Received ${suggestions.length} suggestions.');
-      if (suggestions.isNotEmpty) {
-        print('DEBUG: First suggestion: ${suggestions[0]['name']}');
-      }
     } catch (e) {
-      print('DEBUG: Error fetching city suggestions: $e');
       setState(() {
         _citySuggestions = [];
       });
@@ -348,8 +336,6 @@ class _HomePageState extends State<HomePage>
   @override
   void dispose() {
     _cityController.dispose();
-    _tabController.removeListener(_handleTabSelection);
-    _tabController.dispose();
     _hourlyScrollController.dispose();
     super.dispose();
   }
@@ -357,65 +343,15 @@ class _HomePageState extends State<HomePage>
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return Scaffold(
-        body: Stack(
-          children: [
-            SizedBox.expand(
-              child: Image.asset(
-                'assets/images/background.png',
-                fit: BoxFit.fill,
-              ),
-            ),
-            Center(
-              child: Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.6),
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: const Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircularProgressIndicator(color: Colors.white),
-                    SizedBox(height: 15),
-                    Text(
-                      'Đang tải dữ liệu thời tiết...',
-                      style: TextStyle(color: Colors.white, fontSize: 16),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
+      return const LoadingPage();
     }
 
     if (_errorMessage != null) {
-      return Scaffold(
-        backgroundColor: Colors.white,
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.error_outline, color: Colors.red, size: 60),
-                const SizedBox(height: 20),
-                Text(
-                  _errorMessage!,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 18, color: Colors.red),
-                ),
-                const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: () => _fetchWeatherForCity(_cityController.text),
-                  child: const Text('Thử lại'),
-                ),
-              ],
-            ),
-          ),
-        ),
+      return ErrorMessegePage(
+        message: _errorMessage!,
+        onRetry: () {
+          _loadInitialWeatherRobust();
+        },
       );
     }
 
@@ -440,147 +376,85 @@ class _HomePageState extends State<HomePage>
     final Offset? textFieldPosition = renderBox?.localToGlobal(Offset.zero);
     final Size? textFieldSize = renderBox?.size;
 
-    print('DEBUG: _citySuggestions.isNotEmpty: ${_citySuggestions.isNotEmpty}');
-    print(
-      'DEBUG: textFieldPosition: $textFieldPosition, textFieldSize: $textFieldSize',
-    );
-
     return Scaffold(
       resizeToAvoidBottomInset: false,
       drawer: Drawer(
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.only(
+            topRight: Radius.circular(20),
+            bottomRight: Radius.circular(20),
+          ),
+        ),
         child: Column(
           children: [
             DrawerHeader(
-              decoration: BoxDecoration(color: Theme.of(context).primaryColor),
-              child: const Center(
-                child: Text(
-                  'Lịch sử tìm kiếm',
-                  style: TextStyle(color: Colors.white, fontSize: 24),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.blue.shade700,
+                    Colors.blue.shade400,
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: const BorderRadius.only(
+                  bottomRight: Radius.circular(20),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.2),
+                    blurRadius: 10,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: const SizedBox(
+                width: double.infinity,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Lịch sử tìm kiếm',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 26,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'Các thành phố bạn đã tìm kiếm gần đây',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
             Expanded(
-              child: BlocBuilder<WeatherHistoryBloc, WeatherHistoryState>(
-                builder: (context, state) {
-                  if (state is WeatherHistoryLoading) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (state is WeatherHistoryError) {
-                    return Center(
-                      child: Text('Lỗi tải lịch sử: ${state.message}'),
-                    );
-                  }
-                  if (state.history.isEmpty) {
-                    return const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(16.0),
-                        child: Text(
-                          'Chưa có thành phố nào được tìm kiếm trong hôm nay.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 16, color: Colors.grey),
-                        ),
-                      ),
-                    );
-                  }
-                  return ListView.builder(
-                    padding: EdgeInsets.zero,
-                    itemCount: state.history.length,
-                    itemBuilder: (context, index) {
-                      final historyItem = state.history[index];
-                      final cityName =
-                          historyItem['location']['name'] ?? 'Unknown City';
-                      final temp =
-                          historyItem['current']['temp_c']?.toInt() ?? 'N/A';
-                      final condition =
-                          historyItem['current']['condition']['text'] ?? 'N/A';
-                      final conditionIcon =
-                          historyItem['current']['condition']['icon'];
-
-                      return Card(
-                        margin: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        elevation: 4,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(15),
-                        ),
-                        color: Colors.blue.shade50.withOpacity(0.9),
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 8,
-                          ),
-                          leading:
-                              conditionIcon != null
-                                  ? Image.network(
-                                    'https:$conditionIcon',
-                                    width: 40,
-                                    height: 40,
-                                    errorBuilder:
-                                        (context, error, stackTrace) =>
-                                            const Icon(
-                                              Icons.cloud,
-                                              color: Colors.blue,
-                                            ),
-                                  )
-                                  : const Icon(Icons.cloud, color: Colors.blue),
-                          title: Text(
-                            cityName,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blueGrey,
-                            ),
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '$temp°C',
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.black87,
-                                ),
-                              ),
-                              Text(
-                                condition,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.black54,
-                                ),
-                              ),
-                            ],
-                          ),
-                          onTap: () {
-                            _loadWeatherFromHistory(historyItem);
-                          },
-                          trailing: IconButton(
-                            icon: const Icon(
-                              Icons.delete_forever,
-                              color: Colors.red,
-                            ),
-                            onPressed: () {
-                              context.read<WeatherHistoryBloc>().add(
-                                RemoveWeatherFromHistory(cityName: cityName),
-                              );
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'Đã xóa "$cityName" khỏi lịch sử.',
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      );
-                    },
-                  );
-                },
+              child: WeatherHistoryListView(
+                onTapHistoryItem: _loadWeatherFromHistory,
               ),
             ),
+            ListTile(
+              leading: const Icon(Icons.email, color: Colors.blueAccent),
+              title: const Text(
+                'Đăng ký nhận email',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+              ),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const EmailSubscriptionPage(),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 10),
           ],
         ),
       ),
@@ -604,59 +478,29 @@ class _HomePageState extends State<HomePage>
                     key: _textFieldKey,
                     children: [
                       Builder(
-                        builder:
-                            (context) => IconButton(
-                              icon: const Icon(Icons.menu, color: Colors.white),
-                              onPressed: () {
-                                Scaffold.of(context).openDrawer();
-                              },
-                            ),
+                        builder: (context) => IconButton(
+                          icon: const Icon(Icons.menu, color: Colors.white),
+                          onPressed: () {
+                            Scaffold.of(context).openDrawer();
+                          },
+                        ),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white24,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: TextField(
-                            controller: _cityController,
-                            style: const TextStyle(color: Colors.white),
-                            decoration: InputDecoration(
-                              hintText: 'Nhập tên thành phố...',
-                              hintStyle: const TextStyle(color: Colors.white70),
-                              border: InputBorder.none,
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 14,
-                              ),
-                              prefixIcon: const Icon(
-                                Icons.search,
-                                color: Colors.white,
-                              ),
-                              suffixIcon:
-                                  _cityController.text.isNotEmpty
-                                      ? IconButton(
-                                        icon: const Icon(
-                                          Icons.clear,
-                                          color: Colors.white,
-                                        ),
-                                        onPressed: () {
-                                          setState(() {
-                                            _cityController.clear();
-                                            _errorMessage = null;
-                                            _citySuggestions = [];
-                                          });
-                                        },
-                                      )
-                                      : null,
-                            ),
-                            onChanged: (query) {
-                              setState(() {});
-                              _fetchCitySuggestions(query);
-                            },
-                            onSubmitted: (_) => _searchCity(),
-                          ),
+                        child: CitySearchInput(
+                          controller: _cityController,
+                          onClear: () {
+                            setState(() {
+                              _cityController.clear();
+                              _errorMessage = null;
+                              _citySuggestions = [];
+                            });
+                          },
+                          onChanged: (query) {
+                            setState(() {});
+                            _fetchCitySuggestions(query);
+                          },
+                          onSubmitted: (query) => _searchCity(),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -676,149 +520,24 @@ class _HomePageState extends State<HomePage>
                     ],
                   ),
                 ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: WeatherInformation(
+                    cityName: location['name'],
+                    country: location['country'],
+                    localtime: location['localtime'],
+                    temperature: current['temp_c']?.toDouble() ?? 0.0,
+                    condition: current['condition']['text'],
+                    windSpeed: current['wind_kph']?.toDouble() ?? 0.0,
+                    humidity: current['humidity']?.toInt() ?? 0,
+                  ),
+                ),
+                const SizedBox(height: 20),
                 Expanded(
-                  child: Stack(
-                    children: [
-                      Positioned(
-                        top: 16,
-                        left: 0,
-                        right: 0,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: WeatherInformation(
-                            cityName: location['name'],
-                            country: location['country'],
-                            localtime: location['localtime'],
-                            temperature: current['temp_c']?.toDouble() ?? 0.0,
-                            condition: current['condition']['text'],
-                            windSpeed: current['wind_kph']?.toDouble() ?? 0.0,
-                            humidity: current['humidity']?.toInt() ?? 0,
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        bottom: 0,
-                        left: 0,
-                        right: 0,
-                        child: Container(
-                          height: MediaQuery.of(context).size.height * 0.4,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 24,
-                            vertical: 12,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: const BorderRadius.only(
-                              topLeft: Radius.circular(30),
-                              topRight: Radius.circular(30),
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              TabBar(
-                                controller: _tabController,
-                                indicatorColor: Colors.blueAccent,
-                                labelColor: Colors.black,
-                                unselectedLabelColor: Colors.grey,
-                                labelStyle: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 18,
-                                ),
-                                tabs:
-                                    forecastDays.map((dayData) {
-                                      final forecastDate = DateTime.parse(
-                                        dayData['date'],
-                                      );
-                                      final today = DateTime.now();
-                                      final tomorrow = today.add(
-                                        const Duration(days: 1),
-                                      );
-
-                                      String dayText;
-                                      if (forecastDate.year == today.year &&
-                                          forecastDate.month == today.month &&
-                                          forecastDate.day == today.day) {
-                                        dayText = 'Today';
-                                      } else if (forecastDate.year ==
-                                              tomorrow.year &&
-                                          forecastDate.month ==
-                                              tomorrow.month &&
-                                          forecastDate.day == tomorrow.day) {
-                                        dayText = 'Tomorrow';
-                                      } else {
-                                        dayText = DateFormat(
-                                          'EEE, MMM d',
-                                        ).format(forecastDate);
-                                      }
-                                      return Tab(text: dayText);
-                                    }).toList(),
-                              ),
-                              const SizedBox(height: 16),
-                              Expanded(
-                                child: TabBarView(
-                                  controller: _tabController,
-                                  children:
-                                      forecastDays.map((dayData) {
-                                        final currentDayHours =
-                                            dayData['hour'] as List;
-
-                                        final DateTime forecastDate =
-                                            DateTime.parse(dayData['date']);
-                                        final DateTime now = DateTime.now();
-
-                                        final List<dynamic> filteredHours;
-                                        if (forecastDate.year == now.year &&
-                                            forecastDate.month == now.month &&
-                                            forecastDate.day == now.day) {
-                                          filteredHours =
-                                              currentDayHours.where((hour) {
-                                                final DateTime hourDateTime =
-                                                    DateTime.parse(
-                                                      hour['time'],
-                                                    );
-                                                return hourDateTime.hour >=
-                                                    now.hour;
-                                              }).toList();
-                                        } else {
-                                          filteredHours = currentDayHours;
-                                        }
-
-                                        return Scrollbar(
-                                          controller: _hourlyScrollController,
-                                          child: ListView.separated(
-                                            controller: _hourlyScrollController,
-                                            scrollDirection: Axis.horizontal,
-                                            physics:
-                                                const AlwaysScrollableScrollPhysics(),
-                                            itemCount: filteredHours.length,
-                                            separatorBuilder:
-                                                (_, __) =>
-                                                    const SizedBox(width: 12),
-                                            itemBuilder: (context, hourIndex) {
-                                              final hour =
-                                                  filteredHours[hourIndex];
-                                              return SizedBox(
-                                                width: 120,
-                                                child: HourlyWeatherItem(
-                                                  hourData: hour,
-                                                  isCurrentHour: _isCurrentHour(
-                                                    dayData['date'],
-                                                    hour['time'],
-                                                  ),
-                                                ),
-                                              );
-                                            },
-                                          ),
-                                        );
-                                      }).toList(),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
+                  child: HourlyForecastSection(
+                    forecastDays: forecastDays,
+                    hourlyScrollController: _hourlyScrollController,
+                    isCurrentHour: _isCurrentHour,
                   ),
                 ),
               ],
@@ -827,82 +546,17 @@ class _HomePageState extends State<HomePage>
           if (_citySuggestions.isNotEmpty &&
               textFieldPosition != null &&
               textFieldSize != null)
-            Positioned(
-              top: textFieldPosition.dy + textFieldSize.height + 4,
-              left: textFieldPosition.dx,
-              width: textFieldSize.width,
-              child: Material(
-                color: Colors.transparent,
-                child: Container(
-                  constraints: BoxConstraints(
-                    maxHeight: MediaQuery.of(context).size.height * 0.4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.95),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: Colors.blue.withOpacity(0.3),
-                      width: 1,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    padding: EdgeInsets.zero,
-                    itemCount: _citySuggestions.length,
-                    itemBuilder: (context, index) {
-                      final suggestion = _citySuggestions[index];
-                      final String name = suggestion['name'] ?? '';
-                      final String country = suggestion['country'] ?? '';
-                      final String region = suggestion['region'] ?? '';
-
-                      String displayText = name;
-                      if (region.isNotEmpty && region != name) {
-                        displayText += ', $region';
-                      }
-                      if (country.isNotEmpty &&
-                          country != name &&
-                          country != region) {
-                        displayText += ', $country';
-                      }
-
-                      return ListTile(
-                        title: Text(
-                          displayText,
-                          style: const TextStyle(color: Colors.black87),
-                        ),
-                        onTap: () {
-                          _cityController.text = name;
-                          _searchCity();
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ),
+            CitySuggestionsDropdown(
+              suggestions: _citySuggestions,
+              position: textFieldPosition,
+              size: textFieldSize,
+              onSelect: (cityName) {
+                _cityController.text = cityName;
+                _searchCity();
+              },
             ),
         ],
       ),
     );
-  }
-
-  bool _isCurrentHour(String date, String hourTime) {
-    final DateTime now = DateTime.now();
-    final DateTime forecastDateTime = DateTime.parse(hourTime);
-
-    final bool isToday =
-        forecastDateTime.year == now.year &&
-        forecastDateTime.month == now.month &&
-        forecastDateTime.day == now.day;
-
-    final bool isCurrentHour = forecastDateTime.hour == now.hour;
-
-    return isToday && isCurrentHour;
   }
 }

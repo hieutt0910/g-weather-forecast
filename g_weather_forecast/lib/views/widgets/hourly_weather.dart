@@ -22,10 +22,8 @@ class HourlyWeatherItem extends StatelessWidget {
     final String iconUrl = 'https:${hourData['condition']['icon']}';
 
     return Container(
-      // Bọc Column trong Container
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        // Thay đổi màu nền dựa trên isCurrentHour
         color:
             isCurrentHour
                 ? Colors.blueAccent.withOpacity(0.3)
@@ -34,7 +32,7 @@ class HourlyWeatherItem extends StatelessWidget {
         border:
             isCurrentHour
                 ? Border.all(color: Colors.blueAccent, width: 2)
-                : null, // Thêm viền nếu là giờ hiện tại
+                : null, 
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
